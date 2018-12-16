@@ -1,0 +1,27 @@
+  # smart contract for EventOracle
+
+let gameOracle = base58'94vK8WFeXw65NZ1WTwN3A4H4ymKCqvgBrpmpNMsowF1i'
+let gameWallet = base58'Ho5wpvtkac99VHwxX1hDzesT1H1JTqMNEGjYuCHCa5mh'
+let winnerPrefix = "winnerEvent"
+
+match tx {
+  case t: DataTransaction => 
+    let mePubKey = t.senderPublicKey
+    if (gameOracle == mePubKey) then {
+      if (!isDefined(getBinary(t.sender, toBase58String(t.senderPublicKey)))) then
+        let winnerPubKey = getString(addressFromPublicKey(gameOracle), winnerPrefix) #+key
+        let winnerPK = if (isDefined(winnerPubKey)) then extract(winnerPubKey) else ""
+        
+        let paymentTx = transactionById(extract(getBinary(t.data, toBase58String(winnerPK)))
+        
+        let isPaymentValid = match (paymentTx) {
+            case p:TransferTransaction => 
+              p.amount > 0 && p.recipient == gameWallet && sigVerify(p.bodyBytes, p.proofs[0], p.senderPublicKey)
+            case _ => false
+          }
+        isPaymentValid
+    }
+    else false
+
+  case _ => false
+}

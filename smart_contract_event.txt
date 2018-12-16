@@ -1,0 +1,54 @@
+  # smart contract for EventWallet
+  # 1. deposit amounts for participants
+  # 2. withdraw amounts for winners (check multy-signs)
+
+let gameOracle = base58'94vK8WFeXw65NZ1WTwN3A4H4ymKCqvgBrpmpNMsowF1i'
+let txIdBase58Str = toBase58String(tx.id)
+let winnerPrefix = "winnerEvent"
+# validators for multy-sig 2 of 3
+let validator1PubKey = base58'2GWUMKPNC7vy6mn3KyFg9nouMiUvfAhK3vqpMGB2u6Fp'
+let validator2PubKey = base58'Hf9MD7rky8hdNj9fxkToPaUwgJC6eF665aywpK8SeRJR'
+let validator3PubKey = base58'D53Rrs1sGTi7v5VCZnPNf33oQjPDvStR2aDGtNLfa9x'
+
+match tx {
+  case t: DataTransaction => 
+    let me = t.sender    
+    if (!isDefined(getBinary(me, toBase58String(t.senderPublicKey)))) then
+      let paymentTx = transactionById(extract(getBinary(t.data, toBase58String(t.senderPublicKey))))
+      
+      let isPaymentValid = match (paymentTx) {
+          case p:TransferTransaction => 
+            p.amount > 0 && p.recipient == me && sigVerify(p.bodyBytes, p.proofs[0], p.senderPublicKey)
+          case _ => false
+        }
+      isPaymentValid
+    else false  
+
+  case t: TransferTransaction => 
+    let recipientAddress = addressFromRecipient(t.recipient)
+    let recipientAddressStr = toBase58String(recipientAddress.bytes)
+    
+    let winnerOpt = getString(addressFromPublicKey(gameOracle), winnerPrefix + recipientAddressStr)
+    let winner = if (isDefined(winnerOpt)) then extract(winnerOpt) else ""
+    
+    let recipientAgreement = getBoolean(recipientAddress, txIdBase58Str)    
+    let isRecipientAgreed = if (isDefined(recipientAgreement)) then extract(recipientAgreement) else false
+    
+    let validator1Signed = if (sigVerify(t.bodyBytes, t.proofs[1], validator1PubKey)) then 1 else 0
+    let validator2Signed = if (sigVerify(t.bodyBytes, t.proofs[2], validator2PubKey)) then 1 else 0
+    let validator3Signed = if (sigVerify(t.bodyBytes, t.proofs[3], validator3PubKey)) then 1 else 0
+    let isValidators2of3Signed = validator1Signed + validator2Signed + validator3Signed >= 2
+
+    let balance = wavesBalance(t.sender)
+    #ждем некостыльной реализации 
+    #let isPrizeAlreadySent2Winner = ???
+
+    sigVerify(t.bodyBytes, t.proofs[0], fromBase58String(winner)) && 
+    isRecipientAgreed && 
+    t.amount <= balance &&
+    isValidators2of3Signed
+    #&& !isPrizeAlreadySent2Winner
+
+
+  case _ => false
+}
